@@ -17,7 +17,8 @@ var ServerMarshal = Thorax.ServerMarshal = {
 
     attributeIds = attributeIds || {};
 
-    var contextPath = options && options.data && options.data.contextPath;
+    var data = (options && options.data) || {},
+        contextPath = data.contextPath;
 
     // Find or create the lookup table element
     var elementCacheId = $el._serverData || parseInt($el.attr('data-server-data'), 10);
@@ -36,14 +37,14 @@ var ServerMarshal = Thorax.ServerMarshal = {
     if (_.isArray(attributes) && !_.isString(attributeIds) && !attributes.toJSON) {
       if (attributes.length) {
         cache[name] = _.map(attributes, function(value, key) {
-          return lookupValue(value, attributeIds[key], contextPath);
+          return lookupValue(value, attributeIds[key], contextPath, data.view, data.root);
         });
       }
     } else if (_.isObject(attributes) && !_.isString(attributeIds) && !attributes.toJSON) {
       var stored = {},
           valueSet;
       _.each(attributes, function(value, key) {
-        stored[key] = lookupValue(value, attributeIds[key], contextPath);
+        stored[key] = lookupValue(value, attributeIds[key], contextPath, data.view, data.root);
         valueSet = true;
       });
       if (valueSet) {
@@ -51,7 +52,7 @@ var ServerMarshal = Thorax.ServerMarshal = {
       }
     } else {
       // We were passed a singular value (attributeId is a simple id value)
-      cache[name] = lookupValue(attributes, attributeIds, contextPath);
+      cache[name] = lookupValue(attributes, attributeIds, contextPath, data.view, data.root);
     }
   },
   load: function(el, name, parentView, context) {
@@ -137,18 +138,23 @@ function lookupField(parent, context, fieldName) {
 /*
  * Determines the value to be saved in the lookup table to be restored on the client.
  */
-function lookupValue(value, lutKey, contextPath) {
+function lookupValue(value, lutKey, contextPath, parent, context) {
   if (_.isString(value) || _.isNumber(value) || _.isNull(value) || _.isBoolean(value)) {
     return value;
   } else if (lutKey != null && lutKey !== true && !/^\.\.\//.test(lutKey)) {
     // This is an object what has a path associated with it so we should hopefully
     // be able to resolve it on the client.
-    return {
-      $lut: Handlebars.Utils.appendContextPath(contextPath, lutKey)
-    };
-  } else {
-    // This is some sort of unsuppored object type or a depthed reference (../foo)
-    // which is not supported.
-    throw createError('server-marshall-object');
+    // TODO : Evaluate this and make sure that it resolves properly in the current context
+    // This protects us from incorrect contextPath helpers
+    contextPath = Handlebars.Utils.appendContextPath(contextPath, lutKey);
+    if (lookupField(parent, context, contextPath) === value) {
+      return {
+        $lut: contextPath
+      };
+    }
   }
+
+  // This is some sort of unsuppored object type or a depthed reference (../foo)
+  // which is not supported.
+  throw createError('server-marshall-object');
 }
